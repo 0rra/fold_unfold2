@@ -1,0 +1,15 @@
+#!/bin/bash
+#SBATCH --job-name=traf_2000_spurio
+#SBATCH --output=traf_2000_spurio.out
+#SBATCH --error=traf_2000_spurio.err
+#SBATCH --time=48:00:00
+#SBATCH --mem=18GB
+
+
+source /homes/${user}/.bashrc
+conda activate spurio_env2
+cd /hps/software/users/agb/research/ako/spurio
+#mv output/summaries/query_summary.txt
+python -u run_spurio.py /homes/ako/nfs_research/projects/foldunfold2/part3_gpc_testing/sequences/traf_2000_sequences.fasta
+#mv output/summaries/query_summary.txt output/summaries/traf_1000_summary.txt
+cp traf_2000_sequences_summary.txt /homes/ako/nfs_research/projects/foldunfold2/part3_gpc_testing/results/traf_2000_sequences_summary.txt
