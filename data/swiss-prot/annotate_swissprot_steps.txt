@@ -1,0 +1,12 @@
+#Taxonomy annotation and also uniprot information!! (fragment status, caution labels, parsing fasta file)
+sbatch data/swiss-prot/jobs/anno_sprot.sh
+
+# run is6, run mmseqs
+sbatch data/swiss-prot/jobs/run_sprot_is6.sh
+#sbatch run_sprot_iupred.sh
+sbatch data/swiss-prot/jobs/run_sprot_mmseqs.sh
+
+#script for annotating is6, mmseqs clusters
+sbatch data/swiss-prot/jobs/anno_sprot_tools.sh
+
+(scripts used to prepare swissprot to be used gpc test/train dataset creation and also validation of spurious predicted proteins)

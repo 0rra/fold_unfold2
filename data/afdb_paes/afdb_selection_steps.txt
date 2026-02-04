@@ -1,0 +1,21 @@
+# get afdb sequences
+data/afdb_paeas/scripts/get_afdb_seqs.sh
+
+# annotate which are bacteria to get list of bact afdb ids
+python data/afdb_paeas/scripts/bact_label.py
+
+# use these sequences- mapping with afdb id to get paes
+# e.g. curl https://alphafold.ebi.ac.uk/files/AF-A0AAP2DVT1-F1-predicted_aligned_error_v6.json -o AF-A0AAP2DVT1-F1-predicted_aligned_error_v6.json
+
+# parse paes
+python data/afdb_paeas/scripts/parse_pae_json.py
+output: afdb_v6_bact_paes.tsv
+TSV with columns: afdb_id	max_pae	average_pae	alt_ptm
+
+# create final afdb confidence score dataframes
+
+also makes review status separated fasta files for later use
+
+python data/afdb_paeas/scripts/combine_afdb_scores.py
+
+(execute from repo_dir/foldunfold)

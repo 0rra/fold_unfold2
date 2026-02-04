@@ -1,0 +1,1 @@
+download taxonomy_ancestor_2_2025_10_17.tsv from https://www.uniprot.org/taxonomy?query=ancestor:2
