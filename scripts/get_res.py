@@ -47,12 +47,94 @@ def read_logs(path):
     return seqs
 
 
-def write_esm_res(log_dir, res_csv):
-    seq_info = read_logs(log_dir)
+def parse_pdb_plddt(pdb_path):
+    """Returns dict of {res_num: plddt} for CA atoms only."""
+    plddts = {}
+    with open(pdb_path) as fh:
+        for line in fh:
+            if not line.startswith("ATOM"):
+                continue
+            parts = line.split()
+            if len(parts) < 11:
+                continue
+            if parts[2] != "CA":
+                continue
+            try:
+                res_num = int(parts[5])
+                b = float(parts[10])
+                plddts[res_num] = b
+            except (ValueError, IndexError):
+                continue
+    return plddts
+
+
+def read_esmfold_results(path):
+    base = Path(path)
+    seqs = {}
+    per_res_plddt = {}
+
+    for d in sorted(base.iterdir()):
+        if not d.is_dir():
+            continue
+
+        seq_name = d.name.replace("esmfold_", "")
+
+        log_file = d / "log.txt"
+        if not log_file.exists():
+            print(f"Warning: missing log.txt in {d}")
+            continue
+
+        length, plddt_mean, ptm = open_log(str(d))
+        length = int(length)
+        plddt_mean = float(plddt_mean)
+        ptm = float(ptm)
+
+        pdb_files = list(d.glob("*.pdb"))
+        if not pdb_files:
+            print(f"Warning: no PDB file found in {d}")
+            continue
+
+        plddt_dict = parse_pdb_plddt(pdb_files[0])
+
+        # Build full-length array, NaN where residues are missing
+        plddt_per_res = [plddt_dict.get(i, float("nan")) for i in range(1, length + 1)]
+
+        # Report any gaps
+        missing = [i for i in range(1, length + 1) if i not in plddt_dict]
+        if missing:
+            print(
+                f"Note: {seq_name} missing pLDDT for residue(s) {missing} (likely X or unmodelled)"
+            )
+
+        seqs[seq_name] = {
+            "length": length,
+            "pLDDT mean": plddt_mean,
+            "pTM": ptm,
+            "max pae": None,
+            "mean pae": None,
+            "pae pTM": None,
+        }
+        per_res_plddt[seq_name] = plddt_per_res
+
+    return seqs, per_res_plddt
+
+
+def write_esm_res(log_dir, res_csv, plddt_json):
+    seqs, per_res_plddt = read_esmfold_results(log_dir)
+
+    if not seqs:
+        print(f"Warning: No ESMFold results found in {log_dir}")
+        return
+
     df_esm = pd.DataFrame.from_dict(
-        seq_info, orient="index", columns=["length", "pLDDT mean", "pTM"]
+        seqs,
+        orient="index",
+        columns=["length", "pLDDT mean", "pTM", "max pae", "mean pae", "pae pTM"],
     )
     df_esm.to_csv(res_csv)
+
+    with open(plddt_json, "w") as f:
+        f.write(json.dumps(per_res_plddt))
 
 
 ### read colabfold results
@@ -132,7 +214,27 @@ def write_colabfold_res(res_dir, res_csv, plddt_json, pae_json):
         f.write(json.dumps(res_pae))
 
 
-### read af3 results
+def parse_cif_plddt(cif_path):
+    """Extract per-residue pLDDT from CA atoms in an AF3 mmCIF file."""
+    plddt_dict = {}
+    with open(cif_path) as fh:
+        for line in fh:
+            if not line.startswith("ATOM"):
+                continue
+            parts = line.split()
+            if len(parts) < 18:
+                continue
+            try:
+                if parts[3] != "CA":
+                    continue
+                res_num = int(parts[8])  # label_seq_id (1-indexed residue number)
+                b = float(parts[14])  # B-factor = pLDDT
+                plddt_dict[res_num] = b
+            except (ValueError, IndexError):
+                continue
+    return plddt_dict
+
+
 def read_res(res_dir):
     seq_info = {}
     sub_dirs = [f.path for f in os.scandir(res_dir) if f.is_dir()]
@@ -141,46 +243,88 @@ def read_res(res_dir):
     for seq_dir in sub_dirs:
         seq_name = os.path.basename(seq_dir).upper()
 
-        # Build paths with proper case handling
         conf_path = f"{seq_dir}/{seq_name.lower()}_confidences.json"
         summary_path = f"{seq_dir}/{seq_name.lower()}_summary_confidences.json"
         data_path = f"{seq_dir}/{seq_name.lower()}_data.json"
 
-        # Check if files exist
         if not os.path.exists(conf_path):
             print(f"Warning: Missing confidences file for {seq_name}")
             continue
 
         with open(conf_path) as cj:
             confidences = json.load(cj)
-            atom_plddt = confidences["atom_plddts"]
-            fixed_seq_name = seq_name.replace("SEQ", "seq")
-            seq_info[fixed_seq_name] = {"pLDDT": atom_plddt}
-            seq_info[fixed_seq_name]["pLDDT mean"] = sum(atom_plddt) / len(atom_plddt)
-            seq_info[fixed_seq_name]["pae"] = confidences["pae"]
-            seq_info[fixed_seq_name]["max pae"] = np.max(confidences["pae"])
-            seq_info[fixed_seq_name]["mean pae"] = np.mean(confidences["pae"])
-            seq_info[fixed_seq_name]["pae pTM"] = calc_ptm(
-                np.array(confidences["pae"]), len(atom_plddt)
+
+        atom_plddt = confidences["atom_plddts"]
+        pae = confidences["pae"]
+
+        # --- Load true sequence length ---
+        if os.path.exists(data_path):
+            with open(data_path) as dj:
+                data = json.load(dj)
+                true_len = sum(
+                    len(seq["protein"]["sequence"]) for seq in data["sequences"]
+                )
+        else:
+            print(f"Warning: Missing data file for {seq_name}")
+            true_len = None
+
+        # --- Convert per-atom pLDDT → per-residue pLDDT ---
+        if "atom_residue_index" in confidences:
+            # Old AF3 format
+            residue_plddt = {}
+            for plddt, res_idx, atom_name in zip(
+                atom_plddt,
+                confidences["atom_residue_index"],
+                confidences["atom_atom_name"],
+            ):
+                if atom_name == "CA":
+                    residue_plddt[res_idx] = plddt
+            per_res_plddt = [residue_plddt[i] for i in sorted(residue_plddt.keys())]
+
+        elif "token_res_ids" in confidences:
+            # New AF3 format — use CA atoms from CIF file
+            cif_files = list(Path(seq_dir).glob("*.cif"))
+            if not cif_files:
+                print(f"Warning: No CIF file found for {seq_name}")
+                continue
+            n_tokens = len(confidences["token_res_ids"])
+            plddt_dict = parse_cif_plddt(cif_files[0])
+            per_res_plddt = [
+                plddt_dict.get(i, float("nan")) for i in range(1, n_tokens + 1)
+            ]
+            missing = [i for i in range(1, n_tokens + 1) if i not in plddt_dict]
+            if missing:
+                print(f"Note: {seq_name} missing pLDDT for residues {missing}")
+
+        else:
+            print(f"Warning: Unknown confidence format for {seq_name}")
+            continue
+
+        # --- Check for mismatches ---
+        if true_len is not None and len(per_res_plddt) != true_len:
+            print(
+                f"Warning: AF3 length mismatch for {seq_name}: "
+                f"data.json={true_len}, CA_count={len(per_res_plddt)}, "
+                f"atom_count={len(atom_plddt)}"
             )
+
+        fixed_seq_name = seq_name.replace("SEQ", "seq")
+        seq_info[fixed_seq_name] = {
+            "pLDDT": per_res_plddt,
+            "pLDDT mean": float(np.nanmean(per_res_plddt)),
+            "pae": pae,
+            "max pae": float(np.max(pae)),
+            "mean pae": float(np.mean(pae)),
+            "pae pTM": calc_ptm(np.array(pae), len(per_res_plddt)),
+            "length": len(per_res_plddt),
+        }
 
         if os.path.exists(summary_path):
             with open(summary_path) as sj:
                 summary = json.load(sj)
                 seq_info[fixed_seq_name]["pTM"] = summary["ptm"]
         else:
-            print(f"Warning: Missing summary file for {seq_name}")
             seq_info[fixed_seq_name]["pTM"] = None
-
-        if os.path.exists(data_path):
-            with open(data_path) as dj:
-                data = json.load(dj)
-                for seq in data["sequences"]:
-                    length = len(seq["protein"]["sequence"])
-                seq_info[fixed_seq_name]["length"] = length
-        else:
-            print(f"Warning: Missing data file for {seq_name}")
-            seq_info[fixed_seq_name]["length"] = len(atom_plddt)
 
     return seq_info
 
@@ -224,7 +368,11 @@ def parse_structures(input_res_dir, parse_res_dir, prefix):
     esmfold_dir = Path(input_res_dir) / "esmfold"
     if esmfold_dir.exists():
         print(f"\nProcessing ESMFold results from {esmfold_dir}")
-        write_esm_res(str(esmfold_dir), f"{parse_res_dir}/{prefix}esmfold_info.csv")
+        write_esm_res(
+            str(esmfold_dir),
+            f"{parse_res_dir}/{prefix}esmfold_info.csv",
+            f"{parse_res_dir}/{prefix}esmfold_plddts.json",
+        )
     else:
         print(f"Warning: ESMFold directory not found at {esmfold_dir}")
 
