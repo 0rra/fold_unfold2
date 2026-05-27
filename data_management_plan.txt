@@ -1,0 +1,32 @@
+Project: Folding the Unfoldable 2
+
+Ailsa Orr, 2025_01_06
+
+**What types of research data are you working with?**
+
+Protein sequence data from AntiFam and UniProtKB (Swiss-Prot and TrEMBL); structure prediction outputs from AlphaFold2 (ColabFold), AlphaFold3, and ESMFold; protein annotation data (IUPred2A disorder scores, InterProScan6 annotations, bacteria taxon IDs); and processed results in CSV/TSV format.
+
+**What is your strategy for organising your data?**
+
+Jupyter notebooks are named following the convention <YYYYMMDD>_<descriptor>_<version>. 
+The project is organised into the following top-level directories:
+    data/ — shared input datasets used across the project. Contains subdirectories for AFDB PAE scores (afdb_paes/), reference proteomes (ref_prot/), Swiss-Prot annotation data (swiss-prot/), and taxon IDs (taxonomy/). 
+    nf_foldunfold/ — Nextflow pipeline for running structure prediction tools (AlphaFold3, ColabFold, ESMFold).
+    part1_refoldunfold/, part2_gpc_training/, part3_gpc_testing/ — analysis organised by project part, each containing numbered subdirectories for steps e.g. sequence selection, structure prediction, and results/training. 
+    scripts/ — shared utility scripts used across parts.
+    supplementary/ — additional analysis notebook.
+    environment.yml — Conda environment specification.
+    README.md — project overview.
+
+**What is your data backup strategy?**
+
+The entire project is stored at the EBI computer cluster and backed up regularly.
+All the files except output files that can be easily reproduced by via code execution are regularly backed up in a private repository which will be made publicly available upon preprint publication.
+
+**How do you exchange files (and other information) with your collaborators?**
+
+Through google drive.
+
+**Are you working with commercial/sensitive/personal/patentable data? Will you be able to share these data?**
+
+No.
