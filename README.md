@@ -64,10 +64,7 @@ Comparing structure prediction confidence between AntiFam (spurious), SwissProt 
 ### Sequence Selection
 ```bash
 python part1_refoldunfold/1_sequence_selection/scripts/seed2seq.py
-python part1_refoldunfold/1_sequence_selection/scripts/make_random_seqs.py \
-    10,16,20,30,40,50,60,70,80,90,100,120,140,160,180,200 5 swissprot > part1_refoldunfold/1_sequence_selection/random_seqs/weighted_rdm.fasta
-
-./part1_refoldunfold/1_sequence_selection/scripts/pick_sp.sh
+python part1_refoldunfold/1_sequence_selection/scripts/generate_controls.py
 ```
 
 ### Structure prediction results
@@ -78,7 +75,7 @@ part1_refoldunfold/2_structure_predictions/parsed_results/
 
 ### Results
 ```bash
-part1_refoldunfold/3_results_plotting/plot_figures.ipynb
+part1_refoldunfold/3_results_plotting/20260204_plot_figures_v2.ipynb
 ```
 
 ---
@@ -106,12 +103,12 @@ python part2_gpc_training/1_sequence_selection/scripts/make_antifams_pt3.py
 ### Structure prediction results
 Parsed confidence scores for Swiss-Prot structure predictions used for GPC testing and training. 
 ```
-part2_gpc_training/model_data/parsed_results/
+part2_gpc_training/2_structure_prediction/parsed_results/
 ```
 
 ### Training & Evaluation
 ```bash
-part2_gpc_training/3_train_test/gpc_dev.ipynb
+part2_gpc_training/3_train_test/20260204_gpc_dev_v2.ipynb
 ```
 
 ---
@@ -126,13 +123,14 @@ Applying GPC to bacterial proteins in AlphaFold DB.
 python part3_afdb_gpc/1_gpc_run/scripts/afdb_search.py
 # investigate proteins GPC predicts as spurious
 ./part3_afdb_gpc/1_gpc_run/scripts/process_preds.sh
-python part3_gpc_testing/2_gpc_validation/scripts/prepare_scripts.py
+python part3_gpc_testing/2_gpc_validation/scripts/prepare_scripts.py -f part3_gpc_testing/1_gpc_run/results/sequences/spaf_sequences.fasta -p spaf -r part3_gpc_testing/2_gpc_validation/results -s part3_gpc_testing/2_gpc_validation/scripts
+python part3_gpc_testing/2_gpc_validation/scripts/prepare_scripts.py -f part3_gpc_testing/1_gpc_run/results/sequences/traf_1000_sequences.fasta -p traf -r part3_gpc_testing/2_gpc_validation/results -s part3_gpc_testing/2_gpc_validation/scripts
 ./part3_afdb_gpc/2_gpc_validation/scripts/run_pred_checks_spaf.sh   # Spurious predicted Swiss-Prot proteins
 ./part3_afdb_gpc/2_gpc_validation/scripts/run_pred_checks_traf.sh   # Spurious predicted TrEMBL proteins
 ```
 
 ### Results
 ```bash
-part3_gpc_testing/3_results_plotting/sum_preds.ipynb
+part3_gpc_testing/3_results_plotting/20260204_sum_preds_v1.ipynb
 ```
 
